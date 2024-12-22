@@ -23,6 +23,14 @@ macro_rules! help {
     };
 }
 
+struct MD5State {
+    input: Vec<u8>,
+    a: u32,
+    b: u32,
+    c: u32,
+    d: u32,
+}
+
 pub fn md5(mut input: Vec<u8>) -> Vec<u8> {
     let length: u64 = (input.len() * 8) as u64;
     input.push(0b1 << 7);
@@ -32,38 +40,46 @@ pub fn md5(mut input: Vec<u8>) -> Vec<u8> {
 
     input.extend_from_slice(&length.to_le_bytes());
 
-    let mut a: u32 = MD_BUFFER[0];
-    let mut b: u32 = MD_BUFFER[1];
-    let mut c: u32 = MD_BUFFER[2];
-    let mut d: u32 = MD_BUFFER[3];
+    let mut state = MD5State {
+        input: input,
+        a: MD_BUFFER[0],
+        b: MD_BUFFER[1],
+        c: MD_BUFFER[2],
+        d: MD_BUFFER[3],
+    };
 
-    for i in 0..input.len() / 64 {
-        let prev_a = a;
-        let prev_b = b;
-        let prev_c = c;
-        let prev_d = d;
+    for i in 0..state.input.len() / 64 {
+        let prev_a = state.a;
+        let prev_b = state.b;
+        let prev_c = state.c;
+        let prev_d = state.d;
 
-        round1(&mut a, &mut b, &mut c, &mut d, &input, i);
-        round2(&mut a, &mut b, &mut c, &mut d, &input, i);
-        round3(&mut a, &mut b, &mut c, &mut d, &input, i);
-        round4(&mut a, &mut b, &mut c, &mut d, &input, i);
+        round1(&mut state, i);
+        round2(&mut state, i);
+        round3(&mut state, i);
+        round4(&mut state, i);
 
-        a = a.wrapping_add(prev_a);
-        b = b.wrapping_add(prev_b);
-        c = c.wrapping_add(prev_c);
-        d = d.wrapping_add(prev_d);
+        state.a = state.a.wrapping_add(prev_a);
+        state.b = state.b.wrapping_add(prev_b);
+        state.c = state.c.wrapping_add(prev_c);
+        state.d = state.d.wrapping_add(prev_d);
     }
     let hash = [
-        a.to_le_bytes(),
-        b.to_le_bytes(),
-        c.to_le_bytes(),
-        d.to_le_bytes(),
+        state.a.to_le_bytes(),
+        state.b.to_le_bytes(),
+        state.c.to_le_bytes(),
+        state.d.to_le_bytes(),
     ]
     .concat();
     hash
 }
 
-fn round1(a: &mut u32, b: &mut u32, c: &mut u32, d: &mut u32, input: &Vec<u8>, i: usize) {
+fn round1(state: &mut MD5State, i: usize) {
+    let a  = &mut state.a;
+    let b  = &mut state.b;
+    let c  = &mut state.c;
+    let d  = &mut state.d;
+    let input = &state.input;
     f(a, b, c, d, help!(input, i, 0), SHIFT[0], SINCONST[0]);
     f(d, a, b, c, help!(input, i, 1), SHIFT[1], SINCONST[1]);
     f(c, d, a, b, help!(input, i, 2), SHIFT[2], SINCONST[2]);
@@ -82,7 +98,12 @@ fn round1(a: &mut u32, b: &mut u32, c: &mut u32, d: &mut u32, input: &Vec<u8>, i
     f(b, c, d, a, help!(input, i, 15), SHIFT[3], SINCONST[15]);
 }
 
-fn round2(a: &mut u32, b: &mut u32, c: &mut u32, d: &mut u32, input: &Vec<u8>, i: usize) {
+fn round2(state: &mut MD5State, i: usize) {
+    let a  = &mut state.a;
+    let b  = &mut state.b;
+    let c  = &mut state.c;
+    let d  = &mut state.d;
+    let input = &state.input;
     g(a, b, c, d, help!(input, i, 1), SHIFT[4], SINCONST[16]);
     g(d, a, b, c, help!(input, i, 6), SHIFT[5], SINCONST[17]);
     g(c, d, a, b, help!(input, i, 11), SHIFT[6], SINCONST[18]);
@@ -101,7 +122,12 @@ fn round2(a: &mut u32, b: &mut u32, c: &mut u32, d: &mut u32, input: &Vec<u8>, i
     g(b, c, d, a, help!(input, i, 12), SHIFT[7], SINCONST[31]);
 }
 
-fn round3(a: &mut u32, b: &mut u32, c: &mut u32, d: &mut u32, input: &Vec<u8>, i: usize) {
+fn round3(state:  &mut MD5State, i: usize) {
+    let a  = &mut state.a;
+    let b  = &mut state.b;
+    let c  = &mut state.c;
+    let d  = &mut state.d;
+    let input = &state.input;
     h(a, b, c, d, help!(input, i, 5), SHIFT[8], SINCONST[32]);
     h(d, a, b, c, help!(input, i, 8), SHIFT[9], SINCONST[33]);
     h(c, d, a, b, help!(input, i, 11), SHIFT[10], SINCONST[34]);
@@ -119,7 +145,12 @@ fn round3(a: &mut u32, b: &mut u32, c: &mut u32, d: &mut u32, input: &Vec<u8>, i
     h(c, d, a, b, help!(input, i, 15), SHIFT[10], SINCONST[46]);
     h(b, c, d, a, help!(input, i, 2), SHIFT[11], SINCONST[47]);
 }
-fn round4(a: &mut u32, b: &mut u32, c: &mut u32, d: &mut u32, input: &Vec<u8>, i: usize) {
+fn round4(state:  &mut MD5State, i: usize) {
+    let a  = &mut state.a;
+    let b  = &mut state.b;
+    let c  = &mut state.c;
+    let d  = &mut state.d;
+    let input = &state.input;
     fi(a, b, c, d, help!(input, i, 0), SHIFT[12], SINCONST[48]);
     fi(d, a, b, c, help!(input, i, 7), SHIFT[13], SINCONST[49]);
     fi(c, d, a, b, help!(input, i, 14), SHIFT[14], SINCONST[50]);
