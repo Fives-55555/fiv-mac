@@ -1,4 +1,61 @@
-const MD_BUFFER: [u32; 4] = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476];
+use crate::MAC;
+
+pub struct MD5 {}
+
+impl MAC for MD5 {
+    const BLOCK_SIZE: u16 = 512;
+    const DIGEST_SIZE: u16 = 128;
+    const MAX_SIZE: usize = 0;
+    const WORD_SIZE: u16 = 32;
+
+    type Digest = [u8; 16];
+
+    fn hash(mut v: Vec<u8>) -> Self::Digest {
+        let length: u64 = (v.len() * 8) as u64;
+        v.push(0b1 << 7);
+        while v.len() % 64 != 56 {
+            v.push(0);
+        }
+
+        v.extend_from_slice(&length.to_le_bytes());
+
+        let mut state = MD5State {
+            input: &v,
+            a: MD_INIT[0],
+            b: MD_INIT[1],
+            c: MD_INIT[2],
+            d: MD_INIT[3],
+        };
+
+        for i in 0..state.input.len() / 64 {
+            let prev_a = state.a;
+            let prev_b = state.b;
+            let prev_c = state.c;
+            let prev_d = state.d;
+
+            round1(&mut state, i);
+            round2(&mut state, i);
+            round3(&mut state, i);
+            round4(&mut state, i);
+
+            state.a = state.a.wrapping_add(prev_a);
+            state.b = state.b.wrapping_add(prev_b);
+            state.c = state.c.wrapping_add(prev_c);
+            state.d = state.d.wrapping_add(prev_d);
+        }
+        let a = state.a.to_le_bytes();
+        let b = state.b.to_le_bytes();
+        let c = state.c.to_le_bytes();
+        let d = state.d.to_le_bytes();
+        let hash: Self::Digest = [
+            a[0], a[1], a[2], a[3], b[0], b[1], b[2], b[3], c[0], c[1], c[2], c[3], d[0], d[1],
+            d[2], d[3],
+        ];
+        hash
+    }
+}
+
+const MD_INIT: [u32; 4] = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476];
 const SINCONST: [u32; 64] = [
     0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee, 0xf57c0faf, 0x4787c62a, 0xa8304613, 0xfd469501,
     0x698098d8, 0x8b44f7af, 0xffff5bb1, 0x895cd7be, 0x6b901122, 0xfd987193, 0xa679438e, 0x49b40821,
@@ -23,63 +80,20 @@ macro_rules! help {
     };
 }
 
-struct MD5State {
-    input: Vec<u8>,
+struct MD5State<'a> {
+    input: &'a Vec<u8>,
     a: u32,
     b: u32,
     c: u32,
     d: u32,
 }
 
-pub fn md5(mut input: Vec<u8>) -> Vec<u8> {
-    let length: u64 = (input.len() * 8) as u64;
-    input.push(0b1 << 7);
-    while input.len() % 64 != 56 {
-        input.push(0);
-    }
-
-    input.extend_from_slice(&length.to_le_bytes());
-
-    let mut state = MD5State {
-        input: input,
-        a: MD_BUFFER[0],
-        b: MD_BUFFER[1],
-        c: MD_BUFFER[2],
-        d: MD_BUFFER[3],
-    };
-
-    for i in 0..state.input.len() / 64 {
-        let prev_a = state.a;
-        let prev_b = state.b;
-        let prev_c = state.c;
-        let prev_d = state.d;
-
-        round1(&mut state, i);
-        round2(&mut state, i);
-        round3(&mut state, i);
-        round4(&mut state, i);
-
-        state.a = state.a.wrapping_add(prev_a);
-        state.b = state.b.wrapping_add(prev_b);
-        state.c = state.c.wrapping_add(prev_c);
-        state.d = state.d.wrapping_add(prev_d);
-    }
-    let hash = [
-        state.a.to_le_bytes(),
-        state.b.to_le_bytes(),
-        state.c.to_le_bytes(),
-        state.d.to_le_bytes(),
-    ]
-    .concat();
-    hash
-}
-
 fn round1(state: &mut MD5State, i: usize) {
-    let a  = &mut state.a;
-    let b  = &mut state.b;
-    let c  = &mut state.c;
-    let d  = &mut state.d;
-    let input = &state.input;
+    let a = &mut state.a;
+    let b = &mut state.b;
+    let c = &mut state.c;
+    let d = &mut state.d;
+    let input = state.input;
     f(a, b, c, d, help!(input, i, 0), SHIFT[0], SINCONST[0]);
     f(d, a, b, c, help!(input, i, 1), SHIFT[1], SINCONST[1]);
     f(c, d, a, b, help!(input, i, 2), SHIFT[2], SINCONST[2]);
@@ -99,11 +113,11 @@ fn round1(state: &mut MD5State, i: usize) {
 }
 
 fn round2(state: &mut MD5State, i: usize) {
-    let a  = &mut state.a;
-    let b  = &mut state.b;
-    let c  = &mut state.c;
-    let d  = &mut state.d;
-    let input = &state.input;
+    let a = &mut state.a;
+    let b = &mut state.b;
+    let c = &mut state.c;
+    let d = &mut state.d;
+    let input = state.input;
     g(a, b, c, d, help!(input, i, 1), SHIFT[4], SINCONST[16]);
     g(d, a, b, c, help!(input, i, 6), SHIFT[5], SINCONST[17]);
     g(c, d, a, b, help!(input, i, 11), SHIFT[6], SINCONST[18]);
@@ -122,12 +136,12 @@ fn round2(state: &mut MD5State, i: usize) {
     g(b, c, d, a, help!(input, i, 12), SHIFT[7], SINCONST[31]);
 }
 
-fn round3(state:  &mut MD5State, i: usize) {
-    let a  = &mut state.a;
-    let b  = &mut state.b;
-    let c  = &mut state.c;
-    let d  = &mut state.d;
-    let input = &state.input;
+fn round3(state: &mut MD5State, i: usize) {
+    let a = &mut state.a;
+    let b = &mut state.b;
+    let c = &mut state.c;
+    let d = &mut state.d;
+    let input = state.input;
     h(a, b, c, d, help!(input, i, 5), SHIFT[8], SINCONST[32]);
     h(d, a, b, c, help!(input, i, 8), SHIFT[9], SINCONST[33]);
     h(c, d, a, b, help!(input, i, 11), SHIFT[10], SINCONST[34]);
@@ -145,12 +159,12 @@ fn round3(state:  &mut MD5State, i: usize) {
     h(c, d, a, b, help!(input, i, 15), SHIFT[10], SINCONST[46]);
     h(b, c, d, a, help!(input, i, 2), SHIFT[11], SINCONST[47]);
 }
-fn round4(state:  &mut MD5State, i: usize) {
-    let a  = &mut state.a;
-    let b  = &mut state.b;
-    let c  = &mut state.c;
-    let d  = &mut state.d;
-    let input = &state.input;
+fn round4(state: &mut MD5State, i: usize) {
+    let a = &mut state.a;
+    let b = &mut state.b;
+    let c = &mut state.c;
+    let d = &mut state.d;
+    let input = state.input;
     fi(a, b, c, d, help!(input, i, 0), SHIFT[12], SINCONST[48]);
     fi(d, a, b, c, help!(input, i, 7), SHIFT[13], SINCONST[49]);
     fi(c, d, a, b, help!(input, i, 14), SHIFT[14], SINCONST[50]);
@@ -208,60 +222,60 @@ fn fi(a: &mut u32, x: &mut u32, y: &mut u32, z: &mut u32, element: u32, shift: u
 #[test]
 fn test() {
     assert_eq!(
-        md5(vec![]),
-        vec![
+        MD5::hash(vec![]),
+        [
             0xd4, 0x1d, 0x8c, 0xd9, 0x8f, 0x00, 0xb2, 0x04, 0xe9, 0x80, 0x09, 0x98, 0xec, 0xf8,
             0x42, 0x7e
         ]
     );
     assert_eq!(
-        md5(vec![b'a']),
-        vec![
+        MD5::hash(vec![b'a']),
+        [
             0x0c, 0xc1, 0x75, 0xb9, 0xc0, 0xf1, 0xb6, 0xa8, 0x31, 0xc3, 0x99, 0xe2, 0x69, 0x77,
             0x26, 0x61
         ]
     );
     assert_eq!(
-        md5(vec![b'a', b'b', b'c']),
-        vec![
+        MD5::hash(vec![b'a', b'b', b'c']),
+        [
             0x90, 0x01, 0x50, 0x98, 0x3c, 0xd2, 0x4f, 0xb0, 0xd6, 0x96, 0x3f, 0x7d, 0x28, 0xe1,
             0x7f, 0x72
         ]
     );
     assert_eq!(
-        md5(vec![
+        MD5::hash(vec![
             b'm', b'e', b's', b's', b'a', b'g', b'e', b' ', b'd', b'i', b'g', b'e', b's', b't'
         ]),
-        vec![
+        [
             0xf9, 0x6b, 0x69, 0x7d, 0x7c, 0xb7, 0x93, 0x8d, 0x52, 0x5a, 0x2f, 0x31, 0xaa, 0xf1,
             0x61, 0xd0
         ]
     );
     assert_eq!(
-        md5(vec![
+        MD5::hash(vec![
             b'a', b'b', b'c', b'd', b'e', b'f', b'g', b'h', b'i', b'j', b'k', b'l', b'm', b'n',
             b'o', b'p', b'q', b'r', b's', b't', b'u', b'v', b'w', b'x', b'y', b'z'
         ]),
-        vec![
+        [
             0xc3, 0xfc, 0xd3, 0xd7, 0x61, 0x92, 0xe4, 0x00, 0x7d, 0xfb, 0x49, 0x6c, 0xca, 0x67,
             0xe1, 0x3b
         ]
     );
     assert_eq!(
-        md5(vec![
+        MD5::hash(vec![
             b'A', b'B', b'C', b'D', b'E', b'F', b'G', b'H', b'I', b'J', b'K', b'L', b'M', b'N',
             b'O', b'P', b'Q', b'R', b'S', b'T', b'U', b'V', b'W', b'X', b'Y', b'Z', b'a', b'b',
             b'c', b'd', b'e', b'f', b'g', b'h', b'i', b'j', b'k', b'l', b'm', b'n', b'o', b'p',
             b'q', b'r', b's', b't', b'u', b'v', b'w', b'x', b'y', b'z', b'0', b'1', b'2', b'3',
             b'4', b'5', b'6', b'7', b'8', b'9'
         ]),
-        vec![
+        [
             0xd1, 0x74, 0xab, 0x98, 0xd2, 0x77, 0xd9, 0xf5, 0xa5, 0x61, 0x1c, 0x2c, 0x9f, 0x41,
             0x9d, 0x9f
         ]
     );
     assert_eq!(
-        md5(vec![
+        MD5::hash(vec![
             b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'0', b'1', b'2', b'3', b'4',
             b'5', b'6', b'7', b'8', b'9', b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8',
             b'9', b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'0', b'1', b'2',
@@ -269,7 +283,7 @@ fn test() {
             b'7', b'8', b'9', b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'0',
             b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'0'
         ]),
-        vec![
+        [
             0x57, 0xed, 0xf4, 0xa2, 0x2b, 0xe3, 0xc9, 0x55, 0xac, 0x49, 0xda, 0x2e, 0x21, 0x07,
             0xb6, 0x7a
         ]
